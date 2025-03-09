@@ -29,26 +29,28 @@
 %define DESC_64BIT 0x2000 ; only needed for the code segment
 
 	extern	sector_count
+	extern	kmain
 
-	section	.text
+	section	.boot
 
 	bits	16
 
-	; Clear CS, some BIOSes jump to a different address but the same memory location
+	; Start at address 0x7C00
+_start:
+	; Clear CS, some BIOSes jump to a different address than 0:0x7C00 but the same memory location
 	jmp	0:rm_start
 rm_start:
 	; Set up stack right below boot code
 	xor	ax, ax
 	mov	ss, ax
-	mov	sp, 0x7C00
+	mov	sp, _start
 	; Make DS = CS for easier access
 	mov	ds, ax
+	mov	es, ax
 
 .read_sectors:
 	; ES:BX contains the destination buffer, 0:0x7E00
-	xor	ax, ax
-	mov	es, ax
-	mov	bx, 0x7E00
+	mov	bx, _start + 0x200
 	; AH is 0x02, AL contains the sector count
 	mov	ax, 0x0200 + (sector_count - 1)
 	; Access is according to cylinder:head:sector
@@ -72,6 +74,13 @@ rm_start:
 	; TODO: read the remaining sectors
 
 .complete:
+
+%ifndef	OS86
+	; Enable the A20 line
+	in	al, 0x92
+	or	al, 0x02
+	out	0x92, al
+%endif
 
 %ifdef OS286
 	; Turn off interrupts while setting up protected mode
@@ -148,33 +157,14 @@ rm_start:
 	jmp	0x08:pm_start
 %endif
 
-%ifdef OS86
-	; Write message
-	; The VGA text buffer starts at 0xB8000
-	mov	ax, 0xB800
-	mov	es, ax
-	xor	di, di
-	mov	si, message
-	mov	cx, message_length
-	mov	ah, 0x1E
-%elifdef OS286
+%ifdef OS286
 pm_start:
 	; Now we are in protected mode
-	; Set up stack and other segment registers with protected mode selectors
-	mov	sp, 0x7C00
+	; Set up the segment registers with protected mode selectors
 	mov	ax, 0x10
 	mov	ss, ax
 	mov	ds, ax
 	mov	es, ax
-
-	; Write message
-	; The VGA text buffer is accessed via a different selector from the kernel DS
-	mov	ax, 0x18
-	mov	es, ax
-	xor	di, di
-	mov	si, message
-	mov	cx, message_length
-	mov	ah, 0x1E
 %elifdef OS386
 	bits	32
 pm_start:
@@ -187,13 +177,6 @@ pm_start:
 	mov	es, ax
 	mov	fs, ax
 	mov	gs, ax
-
-	; Write message
-	; The VGA text buffer starts at 0xB8000
-	mov	edi, 0xB8000
-	mov	esi, message
-	mov	ecx, message_length
-	mov	ah, 0x1E
 %elifdef OS64
 	bits	64
 pm_start:
@@ -206,25 +189,12 @@ pm_start:
 	mov	es, ax
 	mov	fs, ax
 	mov	gs, ax
-
-	; Write message
-	; The VGA text buffer starts at 0xB8000
-	mov	edi, 0xB8000
-	mov	esi, message
-	mov	ecx, message_length
-	mov	ah, 0x1E
 %endif
 
-.1:
-	lodsb
-	stosw
-	loop	.1
-
-	; Halt
-	cli
-.2:
+	jmp	kmain
 	hlt
-	jmp	.2
+.0:
+	jmp	.0
 
 %ifdef OS286
 	align	4, db 0
@@ -267,21 +237,6 @@ gdt:
 gdt_end:
 %endif
 
-	align	512, db 0
 	section	.data
-
-message:
-	db	"Greetings! "
-%ifdef OS86
-	db	"OS/86 running in real mode (8086)"
-%elifdef OS286
-	db	"OS/286 running in 16-bit protected mode (80286)"
-%elifdef OS386
-	db	"OS/386 running in 32-bit protected mode (80386)"
-%elifdef OS64
-	db	"OS/64 running in 64-bit long mode"
-%else
-	db	"OS/???"
-%endif
-message_length	equ	$ - message
+	; A data section is required for the linker script
 

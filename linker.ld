@@ -5,6 +5,8 @@ SECTIONS
 	image_start = .;
 	.text :
 	{
+		*(.boot)
+		. = ALIGN(512);
 		*(.text)
 	}
 	.rodata :

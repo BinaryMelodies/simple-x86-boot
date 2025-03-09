@@ -17,5 +17,6 @@ Requirements:
 
 * Netwide Assembler
 * Make
-* QEMU system emulator for 386 and x86-64
+* Bare metal GCC compilers for ia16, i686 and x86_64
+* QEMU system emulator for i386 and x86_64
 
