@@ -28,12 +28,10 @@
 %define DESC_32BIT 0x4000
 %define DESC_64BIT 0x2000 ; only needed for the code segment
 
-	org	0x7C00
-	; The IBM PC loads the code at this address
+	section	.text
 
 	bits	16
 
-image_start:
 	; Clear CS, some BIOSes jump to a different address but the same memory location
 	jmp	0:rm_start
 rm_start:
@@ -253,12 +251,5 @@ message:
 %endif
 message_length	equ	$ - message
 
-	times	510 - ($ - $$)	db 0
-
-	; Needed for BIOS to boot disk
-	db	0x55, 0xAA
-
-	; Whole number of 512-byte sectors (not necessary here, as the image already ends at 512 bytes)
-	align	512, db 0
-image_end:
+	section	.data
 
