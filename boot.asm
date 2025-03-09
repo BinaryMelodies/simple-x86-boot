@@ -28,6 +28,8 @@
 %define DESC_32BIT 0x4000
 %define DESC_64BIT 0x2000 ; only needed for the code segment
 
+	extern	sector_count
+
 	section	.text
 
 	bits	16
@@ -41,6 +43,35 @@ rm_start:
 	mov	sp, 0x7C00
 	; Make DS = CS for easier access
 	mov	ds, ax
+
+.read_sectors:
+	; ES:BX contains the destination buffer, 0:0x7E00
+	xor	ax, ax
+	mov	es, ax
+	mov	bx, 0x7E00
+	; AH is 0x02, AL contains the sector count
+	mov	ax, 0x0200 + (sector_count - 1)
+	; Access is according to cylinder:head:sector
+	; CH contains the cylinder number, CL the 1 based sector number
+	; First sector is already in memory, so we start from 2
+	mov	cx, 0x0002
+	; DH contains the head number
+	mov	dh, 0x00
+	; DL contains the drive number, the value is received by the boot sector code
+	int	0x13
+
+	jnc	.success
+	; There was a failure, reset the disk system and try again
+	mov	al, 0
+	int	0x13
+	jmp	.read_sectors
+.success:
+	cmp	al, sector_count - 1
+	je	.complete
+
+	; TODO: read the remaining sectors
+
+.complete:
 
 %ifdef OS286
 	; Turn off interrupts while setting up protected mode
@@ -236,6 +267,9 @@ gdt:
 gdt_end:
 %endif
 
+	align	512, db 0
+	section	.data
+
 message:
 	db	"Greetings! "
 %ifdef OS86
@@ -250,6 +284,4 @@ message:
 	db	"OS/???"
 %endif
 message_length	equ	$ - message
-
-	section	.data
 
