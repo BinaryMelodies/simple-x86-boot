@@ -1,0 +1,17 @@
+#! /bin/sh
+if [ "$1" == "16" -o "$1" == "rm" -o "$1" == "86" -o "$1" == "8086" ]
+then
+	qemu-system-i386 -fda 8086.img
+elif [ "$1" == "pm" -o "$1" == "286" -o "$1" == "80286" ]
+then
+	qemu-system-i386 -fda 286.img
+elif [ "$1" == "32" -o "$1" == "386" -o "$1" == "80386" -o "$1" == "" ]
+then
+	qemu-system-i386 -fda 386.img
+elif [ "$1" == "64" -o "$1" == "amd64" -o "$1" == "x86_64" -o "$1" == "x86-64" -o "$1" == "x64" ]
+then
+	qemu-system-x86_64 -fda x86-64.img
+else
+	echo "Unknown flag $1"
+	qemu-system-i386 -fda 386.img
+fi
