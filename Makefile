@@ -13,7 +13,7 @@ obj/8086/boot.o: src/boot.asm
 
 obj/8086/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
-	ia16-elf-gcc -c $< -o $@ -DOS86=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+	ia16-elf-gcc -c $< -o $@ -DOS86=1 -std=gnu99 -ffreestanding -Wall -Wextra
 
 obj/286/boot.o: src/boot.asm
 	mkdir -p `dirname $@`
@@ -21,7 +21,7 @@ obj/286/boot.o: src/boot.asm
 
 obj/286/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
-	ia16-elf-gcc -c $< -o $@ -DOS286=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -mprotected-mode
+	ia16-elf-gcc -c $< -o $@ -DOS286=1 -std=gnu99 -ffreestanding -Wall -Wextra -mprotected-mode
 
 obj/386/boot.o: src/boot.asm
 	mkdir -p `dirname $@`
