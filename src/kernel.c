@@ -1,6 +1,8 @@
 
-typedef unsigned char  uint8_t;
-typedef unsigned short uint16_t;
+#include "stdbool.h"
+#include "stdint.h"
+#include "stdnoreturn.h"
+#include "i86.h"
 
 #if OS86
 const char greeting[] = "Greetings! OS/86 running in real mode (8086)";
@@ -14,27 +16,30 @@ const char greeting[] = "Greetings! OS/64 running in 64-bit long mode";
 # error Unknown target
 #endif
 
-_Noreturn void kmain(void)
-{
 #if OS86
-	uint16_t __far * video_buffer = (uint16_t __far *)0xB8000000;
+uint16_t far * const video_buffer = (uint16_t far *)MK_FP(0xB800, 0);
 #elif OS286
-	uint16_t __far * video_buffer = (uint16_t __far *)0x00180000;
+uint16_t far * const video_buffer = (uint16_t far *)MK_FP(0x0018, 0);
 #else
-	uint16_t * video_buffer = (uint16_t *)0x000B8000;
+uint16_t * const video_buffer = (uint16_t *)0x000B8000;
 #endif
 
-#ifdef __ia16__
-	/* Workaround, the ia16 optimizer has trouble copying from a near segment to a far segment */
-	const char __far * const message = greeting;
-#else
-	const char * const message = greeting;
-#endif
+static inline void video_putchar(int offset, uint16_t value)
+{
+	video_buffer[offset] = value;
+}
 
-	for(int i = 0; message[i] != '\0'; i++)
+static inline void video_putstr(int offset, const char far * text)
+{
+	for(int i = 0; text[i] != '\0'; i++)
 	{
-		video_buffer[i] = 0x1E00 | (uint8_t)message[i];
+		video_putchar(offset + i, 0x1E00 | (uint8_t)text[i]);
 	}
+}
+
+noreturn void kmain(void)
+{
+	video_putstr(0, greeting);
 
 	for(;;)
 		;

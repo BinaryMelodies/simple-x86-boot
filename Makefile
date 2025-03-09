@@ -5,7 +5,7 @@ clean:
 	rm -rf *.img obj
 
 distclean: clean
-	rm -rf *~
+	rm -rf *~ src/*~
 
 obj/8086/boot.o: src/boot.asm
 	mkdir -p `dirname $@`
@@ -40,16 +40,16 @@ obj/x86-64/kernel.o: src/kernel.c
 	x86_64-elf-gcc -c $< -o $@ -DOS64=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2
 
 obj/8086/image.bin: obj/8086/boot.o obj/8086/kernel.o
-	ld -melf_i386 -T src/linker.ld -o $@ $^
+	ia16-elf-gcc -T src/linker.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
 
 obj/286/image.bin: obj/286/boot.o obj/286/kernel.o
-	ld -melf_i386 -T src/linker.ld -o $@ $^
+	ia16-elf-gcc -T src/linker.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
 
 obj/386/image.bin: obj/386/boot.o obj/386/kernel.o
-	ld -melf_i386 -T src/linker.ld -o $@ $^
+	i686-elf-gcc -T src/linker.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
 
 obj/x86-64/image.bin: obj/x86-64/boot.o obj/x86-64/kernel.o
-	ld -melf_x86_64 -T src/linker.ld -o $@ $^
+	x86_64-elf-gcc -T src/linker.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
 
 8086.img: obj/8086/image.bin
 	dd if=/dev/zero of=$@ count=1440 bs=1024
