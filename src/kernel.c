@@ -17,8 +17,11 @@ const char greeting[] = "Greetings! OS/64 running in 64-bit long mode";
 # error Unknown target
 #endif
 
-static const unsigned video_width = 80;
-static const unsigned video_height = 25;
+enum
+{
+	VIDEO_WIDTH = 80,
+	VIDEO_HEIGHT = 25
+};
 
 static uint8_t video_x = 0, video_y = 0, video_attribute = 0x07;
 
@@ -40,9 +43,25 @@ static inline uint16_t video_get_word(int offset)
 	return video_buffer[offset];
 }
 
+static inline void video_scroll_lines(int count)
+{
+	if(count > VIDEO_HEIGHT)
+	{
+		count = VIDEO_HEIGHT;
+	}
+	for(int i = 0; i < VIDEO_WIDTH * (VIDEO_HEIGHT - count); i++)
+	{
+		video_buffer[i] = video_buffer[i + VIDEO_WIDTH * count];
+	}
+	for(int i = 0; i < VIDEO_WIDTH * count; i++)
+	{
+		video_buffer[i + VIDEO_WIDTH * (VIDEO_HEIGHT - count)] = (video_attribute << 8) | ' ';
+	}
+}
+
 static inline void video_move_cursor(void)
 {
-	uint16_t location = video_y * video_width + video_x;
+	uint16_t location = video_y * VIDEO_WIDTH + video_x;
 	outp(0x3D4, 0x0E);
 	outp(0x3D5, location >> 8);
 	outp(0x3D4, 0x0F);
@@ -69,15 +88,20 @@ static inline void video_putchar(int c)
 	default:
 		if(' ' <= c && c <= '~')
 		{
-			video_set_word(video_y * video_width + video_x, (video_attribute << 8) + (uint8_t)c);
+			video_set_word(video_y * VIDEO_WIDTH + video_x, (video_attribute << 8) + (uint8_t)c);
 			video_x++;
 		}
 		break;
 	}
-	if(video_x >= video_width)
+	if(video_x >= VIDEO_WIDTH)
 	{
-		video_y += video_x / video_width;
-		video_x %= video_width;
+		video_y += video_x / VIDEO_WIDTH;
+		video_x %= VIDEO_WIDTH;
+	}
+	if(video_y >= VIDEO_HEIGHT)
+	{
+		video_scroll_lines(video_y + 1 - VIDEO_HEIGHT);
+		video_y = VIDEO_HEIGHT - 1;
 	}
 	video_move_cursor();
 }
@@ -94,6 +118,11 @@ noreturn void kmain(void)
 {
 	video_attribute = 0x1E;
 	video_putstr(greeting);
+
+	for(int i = 0; i < VIDEO_HEIGHT; i++)
+	{
+		video_putstr("scroll test\n");
+	}
 
 	for(;;)
 		;
