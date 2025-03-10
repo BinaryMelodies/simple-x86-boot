@@ -13,6 +13,7 @@ obj/8086/boot.o: src/boot.asm
 
 obj/8086/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
+	#ia16-elf-gcc -c $< -o $@ -DOS86=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -fno-delete-null-pointer-checks
 	ia16-elf-gcc -c $< -o $@ -DOS86=1 -std=gnu99 -ffreestanding -Wall -Wextra -fno-delete-null-pointer-checks
 
 obj/286/boot.o: src/boot.asm
@@ -21,6 +22,7 @@ obj/286/boot.o: src/boot.asm
 
 obj/286/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
+	#ia16-elf-gcc -c $< -o $@ -DOS286=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -march=i80286 -mprotected-mode
 	ia16-elf-gcc -c $< -o $@ -DOS286=1 -std=gnu99 -ffreestanding -Wall -Wextra -march=i80286 -mprotected-mode
 
 obj/386/boot.o: src/boot.asm

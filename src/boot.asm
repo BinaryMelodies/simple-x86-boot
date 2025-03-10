@@ -30,8 +30,10 @@
 
 	extern	sector_count
 	extern	kmain
+	extern	bss_start
+	extern	bss_end
 
-	section	.boot
+	section	boot
 
 	bits	16
 
@@ -157,38 +159,70 @@ rm_start:
 	jmp	0x08:pm_start
 %endif
 
-%ifdef OS286
+%ifdef OS86
+	; Set up stack
+	mov	sp, stack_top
+
+	; Clear bss
+	mov	di, bss_start
+	mov	cx, bss_end
+	sub	cx, di
+	mov	al, 0
+	rep	stosb
+%elifdef OS286
 pm_start:
 	; Now we are in protected mode
-	; Set up the segment registers with protected mode selectors
+	; Set up stack and other segment registers with protected mode selectors
+	mov	sp, stack_top
 	mov	ax, 0x10
 	mov	ss, ax
 	mov	ds, ax
 	mov	es, ax
+
+	; Clear bss
+	mov	di, bss_start
+	mov	cx, bss_end
+	sub	cx, di
+	mov	al, 0
+	rep	stosb
 %elifdef OS386
 	bits	32
 pm_start:
 	; Now we are in 32-bit protected mode
 	; Set up stack and other segment registers with protected mode selectors
-	mov	esp, 0x7C00
+	mov	esp, stack_top
 	mov	ax, 0x10
 	mov	ss, ax
 	mov	ds, ax
 	mov	es, ax
 	mov	fs, ax
 	mov	gs, ax
+
+	; Clear bss
+	mov	edi, bss_start
+	mov	ecx, bss_end
+	sub	ecx, edi
+	mov	al, 0
+	rep	stosb
 %elifdef OS64
 	bits	64
 pm_start:
 	; Now we are in 64-bit protected mode
 	; Set up stack and other segment registers with protected mode selectors
-	mov	esp, 0x7C00
+	mov	rsp, stack_top
 	mov	ax, 0x10
 	mov	ss, ax
 	mov	ds, ax
 	mov	es, ax
 	mov	fs, ax
 	mov	gs, ax
+
+	; Clear bss
+	mov	rdi, bss_start
+	mov	rcx, bss_end
+	sub	rcx, rdi
+	mov	al, 0
+	rep	stosb
 %endif
 
 	jmp	kmain
@@ -239,4 +273,8 @@ gdt_end:
 
 	section	.data
 	; A data section is required for the linker script
+
+	section	stack nobits alloc noexec write align=4
+	resb	0x200
+stack_top:
 

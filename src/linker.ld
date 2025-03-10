@@ -5,7 +5,7 @@ SECTIONS
 	image_start = .;
 	.text :
 	{
-		*(.boot)
+		*(boot)
 		. = ALIGN(512);
 		*(.text)
 	}
@@ -22,7 +22,10 @@ SECTIONS
 	sector_count = (image_end - image_start) >> 9;
 	.bss :
 	{
+		bss_start = .;
 		*(COMMON)
 		*(.bss)
+		bss_end = .;
+		*(stack)
 	}
 }
