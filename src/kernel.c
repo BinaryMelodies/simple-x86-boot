@@ -116,6 +116,39 @@ static inline void screen_putstr(const char far * text)
 	}
 }
 
+static inline void screen_puthex(size_t value)
+{
+	char buffer[sizeof(value) * 2 + 1];
+	int ptr = sizeof(buffer);
+	buffer[--ptr] = '\0';
+	do
+	{
+		int d = value & 0xF;
+		buffer[--ptr] = d < 10 ? '0' + d : 'A' + d - 10;
+		value >>= 4;
+	} while(value != 0);
+	screen_putstr(&buffer[ptr]);
+}
+
+static inline void screen_putdec(ssize_t value)
+{
+	// this approximates the number of digits for around 10 bytes
+	char buffer[(sizeof(value) * 5 + 1) / 2];
+	int ptr = sizeof(buffer);
+	if(value < 0)
+	{
+		screen_putchar('-');
+		value = -value;
+	}
+	buffer[--ptr] = '\0';
+	do
+	{
+		buffer[--ptr] = '0' + (value % 10);
+		value /= 10;
+	} while(value != 0);
+	screen_putstr(&buffer[ptr]);
+}
+
 noreturn void kmain(void)
 {
 	screen_attribute = 0x1E;
@@ -125,6 +158,9 @@ noreturn void kmain(void)
 	{
 		screen_putstr("scroll test\n");
 	}
+
+	screen_puthex((size_t)0x1A2B3C4D);
+	screen_putdec(-12345);
 
 	for(;;)
 		;
