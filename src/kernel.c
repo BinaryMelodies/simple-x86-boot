@@ -1,7 +1,9 @@
 
 #include "stdbool.h"
+#include "stddef.h"
 #include "stdint.h"
 #include "stdnoreturn.h"
+#include "string.h"
 #include "i86.h"
 #include "conio.h"
 
