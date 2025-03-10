@@ -7,16 +7,143 @@
 #include "i86.h"
 #include "conio.h"
 
-#if OS86
-const char greeting[] = "Greetings! OS/86 running in real mode (8086)";
-#elif OS286
-const char greeting[] = "Greetings! OS/286 running in 16-bit protected mode (80286)";
-#elif OS386
-const char greeting[] = "Greetings! OS/386 running in 32-bit protected mode (80386)";
-#elif OS64
-const char greeting[] = "Greetings! OS/64 running in 64-bit long mode";
+#if !OS86
+typedef union descriptor_t
+{
+	struct
+	{
+		uint16_t limit0;
+		uint32_t base0 : 24;
+		uint8_t access;
+#if OS286
+		uint16_t reserved;
 #else
-# error Unknown target
+		uint8_t limit1 : 4;
+		uint8_t flags : 4;
+		uint8_t base1;
+#endif
+	} __attribute__((packed)) segment;
+} descriptor_t;
+
+typedef struct descriptor_table_t
+{
+	uint16_t limit;
+	unsigned long base;
+} __attribute__((packed)) descriptor_table_t;
+
+enum
+{
+	DESCRIPTOR_ACCESS_DATA = 0x0092,
+	DESCRIPTOR_ACCESS_CODE = 0x009A,
+	DESCRIPTOR_ACCESS_CPL0 = 0x0000,
+	DESCRIPTOR_ACCESS_CPL3 = 0x0060,
+	DESCRIPTOR_FLAGS_16BIT = 0x00,
+	DESCRIPTOR_FLAGS_32BIT = 0x40,
+	DESCRIPTOR_FLAGS_64BIT = 0x20,
+	DESCRIPTOR_FLAGS_G = 0x80,
+};
+
+#if OS286
+# define descriptor_set_segment(__descriptor, __base, __limit, __attributes, __flags) descriptor_set_segment(__descriptor, __base, __limit, __attributes)
+#endif
+
+static inline void descriptor_set_segment(descriptor_t * descriptor, uint32_t base, unsigned int limit, uint16_t access, uint8_t flags)
+{
+#if !OS286
+	if(limit > 0xFFF)
+	{
+		flags |= DESCRIPTOR_FLAGS_G;
+		limit >>= 12;
+	}
+	else
+	{
+		flags &= ~DESCRIPTOR_FLAGS_G;
+	}
+#endif
+	descriptor->segment.limit0 = limit;
+	descriptor->segment.base0 = base;
+	descriptor->segment.access = access;
+#if OS286
+	descriptor->segment.reserved = 0;
+#else
+	descriptor->segment.limit1 = limit >> 16;
+	descriptor->segment.flags = flags >> 4;
+	descriptor->segment.base1 = base >> 24;
+#endif
+}
+
+enum
+{
+	SEL_KERNEL_CS = 0x08,
+	SEL_KERNEL_SS = 0x10,
+#if OS286
+	SEL_KERNEL_ES = 0x18,
+	SEL_USER_CS = 0x20,
+	SEL_USER_SS = 0x28,
+	SEL_MAX = 0x30,
+#else
+	SEL_USER_CS = 0x18,
+	SEL_USER_SS = 0x20,
+	SEL_MAX = 0x28,
+#endif
+};
+
+descriptor_t gdt[SEL_MAX / 8];
+
+static inline void load_gdt(descriptor_t * table, uint16_t size)
+{
+	descriptor_table_t gdtr;
+	gdtr.limit = size - 1;
+	gdtr.base = (size_t)table;
+
+	/* after calling LGDT, a long return is used to load CS:[E/R]IP, and then the remaining registers are filled with SEL_KERNEL_SS */
+
+#if OS286
+	/* The 80286 only has the SS, DS and ES registers */
+	asm volatile(
+		"pushw\t%1\n\t"
+		"pushw\t$1f\n\t"
+		"lgdt\t(%0)\n\t"
+		"lretw\n"
+		"1:\n\t"
+		"movw\t%w2, %%ss\n\t"
+		"movw\t%w2, %%ds\n\t"
+		"movw\t%w2, %%es"
+		:
+		: "B"(&gdtr), "ri"(SEL_KERNEL_CS), "r"(SEL_KERNEL_SS)
+		: "memory");
+#elif OS386
+	asm volatile(
+		"pushl\t%1\n\t"
+		"pushl\t$1f\n\t"
+		"lgdt\t(%0)\n\t"
+		"lretl\n"
+		"1:\n\t"
+		"movw\t%w2, %%ss\n\t"
+		"movw\t%w2, %%ds\n\t"
+		"movw\t%w2, %%es\n\t"
+		"movw\t%w2, %%fs\n\t"
+		"movw\t%w2, %%gs\n\t"
+		:
+		: "r"(&gdtr), "ri"((uint32_t)SEL_KERNEL_CS), "r"((uint16_t)SEL_KERNEL_SS)
+		: "memory");
+#elif OS64
+	asm volatile(
+		"pushq\t%1\n\t"
+		"pushq\t$1f\n\t"
+		"lgdt\t(%0)\n\t"
+		"lretq\n"
+		"1:\n\t"
+		"movw\t%w2, %%ss\n\t"
+		"movw\t%w2, %%ds\n\t"
+		"movw\t%w2, %%es\n\t"
+		"movw\t%w2, %%fs\n\t"
+		"movw\t%w2, %%gs\n\t"
+		:
+		: "r"(&gdtr), "ri"((uint64_t)SEL_KERNEL_CS), "r"((uint16_t)SEL_KERNEL_SS)
+		: "memory");
+#endif
+}
 #endif
 
 enum
@@ -149,8 +276,42 @@ static inline void screen_putdec(ssize_t value)
 	screen_putstr(&buffer[ptr]);
 }
 
+#if OS86
+const char greeting[] = "Greetings! OS/86 running in real mode (8086)";
+#elif OS286
+const char greeting[] = "Greetings! OS/286 running in 16-bit protected mode (80286)";
+#elif OS386
+const char greeting[] = "Greetings! OS/386 running in 32-bit protected mode (80386)";
+#elif OS64
+const char greeting[] = "Greetings! OS/64 running in 64-bit long mode";
+#else
+# error Unknown target
+#endif
+
 noreturn void kmain(void)
 {
+#if OS286
+	descriptor_set_segment(&gdt[SEL_KERNEL_CS / 8], 0, 0xFFFF, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_16BIT);
+	descriptor_set_segment(&gdt[SEL_KERNEL_SS / 8], 0, 0xFFFF, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_16BIT);
+	descriptor_set_segment(&gdt[SEL_KERNEL_ES / 8], 0x0B8000, 0xFFFF, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_16BIT);
+	descriptor_set_segment(&gdt[SEL_USER_CS / 8], 0, 0xFFFF, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL3, DESCRIPTOR_FLAGS_16BIT);
+	descriptor_set_segment(&gdt[SEL_USER_SS / 8], 0, 0xFFFF, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL3, DESCRIPTOR_FLAGS_16BIT);
+#elif OS386
+	descriptor_set_segment(&gdt[SEL_KERNEL_CS / 8], 0, 0xFFFFFFFF, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_32BIT);
+	descriptor_set_segment(&gdt[SEL_KERNEL_SS / 8], 0, 0xFFFFFFFF, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_32BIT);
+	descriptor_set_segment(&gdt[SEL_USER_CS / 8], 0, 0xFFFFFFFF, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL3, DESCRIPTOR_FLAGS_32BIT);
+	descriptor_set_segment(&gdt[SEL_USER_SS / 8], 0, 0xFFFFFFFF, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL3, DESCRIPTOR_FLAGS_32BIT);
+#elif OS64
+	descriptor_set_segment(&gdt[SEL_KERNEL_CS / 8], 0, 0, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL0, DESCRIPTOR_FLAGS_64BIT);
+	descriptor_set_segment(&gdt[SEL_KERNEL_SS / 8], 0, 0, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL0, 0);
+	descriptor_set_segment(&gdt[SEL_USER_CS / 8], 0, 0, DESCRIPTOR_ACCESS_CODE | DESCRIPTOR_ACCESS_CPL3, DESCRIPTOR_FLAGS_64BIT);
+	descriptor_set_segment(&gdt[SEL_USER_SS / 8], 0, 0, DESCRIPTOR_ACCESS_DATA | DESCRIPTOR_ACCESS_CPL3, 0);
+#endif
+
+#if !OS86
+	load_gdt(gdt, sizeof gdt);
+#endif
+
 	screen_attribute = 0x1E;
 	screen_putstr(greeting);
 
@@ -161,6 +322,9 @@ noreturn void kmain(void)
 
 	screen_puthex((size_t)0x1A2B3C4D);
 	screen_putdec(-12345);
+#if !OS86
+	screen_putdec(sizeof(descriptor_t));
+#endif
 
 	for(;;)
 		;
