@@ -962,7 +962,7 @@ static inline void screen_putdec(ssize_t value)
 	screen_putstr(&buffer[ptr]);
 }
 
-static uint32_t timer_tick;
+static volatile uint32_t timer_tick;
 
 static inline void timer_interrupt_handler(registers_t * registers)
 {
@@ -970,10 +970,108 @@ static inline void timer_interrupt_handler(registers_t * registers)
 
 	timer_tick ++;
 
-	screen_x = 79;
+	screen_x = SCREEN_WIDTH - 1;
 	screen_y = 0;
 	screen_attribute = 0x0F;
 	screen_putchar("/-\\|"[timer_tick & 3]);
+}
+
+static const struct
+{
+	char normal;
+	char shifted;
+} keyboard_scancode_table[256] =
+{
+	[0x01] = { '\33', '\33' },
+	[0x02] = { '1', '!' },
+	[0x03] = { '2', '@' },
+	[0x04] = { '3', '#' },
+	[0x05] = { '4', '$' },
+	[0x06] = { '5', '%' },
+	[0x07] = { '6', '^' },
+	[0x08] = { '7', '&' },
+	[0x09] = { '8', '*' },
+	[0x0A] = { '9', '(' },
+	[0x0B] = { '0', ')' },
+	[0x0C] = { '-', '_' },
+	[0x0D] = { '=', '+' },
+	[0x0E] = { '\b', '\b' },
+	[0x0F] = { '\t', '\t' },
+	[0x10] = { 'q', 'Q' },
+	[0x11] = { 'w', 'W' },
+	[0x12] = { 'e', 'E' },
+	[0x13] = { 'r', 'R' },
+	[0x14] = { 't', 'T' },
+	[0x15] = { 'y', 'Y' },
+	[0x16] = { 'u', 'U' },
+	[0x17] = { 'i', 'I' },
+	[0x18] = { 'o', 'O' },
+	[0x19] = { 'p', 'P' },
+	[0x1A] = { '[', '{' },
+	[0x1B] = { ']', '}' },
+	[0x1C] = { '\n', '\n' },
+
+	[0x1E] = { 'a', 'A' },
+	[0x1F] = { 's', 'S' },
+	[0x20] = { 'd', 'D' },
+	[0x21] = { 'f', 'F' },
+	[0x22] = { 'g', 'G' },
+	[0x23] = { 'h', 'H' },
+	[0x24] = { 'j', 'J' },
+	[0x25] = { 'k', 'K' },
+	[0x26] = { 'l', 'L' },
+	[0x27] = { ';', ':' },
+	[0x28] = { '\'', '"' },
+	[0x29] = { '`', '~' },
+
+	[0x2B] = { '\\', '|' },
+	[0x2C] = { 'z', 'Z' },
+	[0x2D] = { 'x', 'X' },
+	[0x2E] = { 'c', 'C' },
+	[0x2F] = { 'v', 'V' },
+	[0x30] = { 'b', 'B' },
+	[0x31] = { 'n', 'N' },
+	[0x32] = { 'm', 'M' },
+	[0x33] = { ',', '<' },
+	[0x34] = { '.', '>' },
+	[0x35] = { '/', '?' },
+
+	[0x39] = { ' ', ' ' },
+};
+
+static volatile bool keyboard_shift = false;
+
+#define KEYBOARD_BUFFER_SIZE 16
+static volatile char keyboard_buffer[KEYBOARD_BUFFER_SIZE];
+static volatile size_t keyboard_buffer_count;
+static volatile size_t keyboard_buffer_pointer;
+
+static inline void keyboard_buffer_push(char c)
+{
+	if(keyboard_buffer_count < KEYBOARD_BUFFER_SIZE)
+	{
+		keyboard_buffer[(keyboard_buffer_pointer + keyboard_buffer_count++) % KEYBOARD_BUFFER_SIZE] = c;
+	}
+}
+
+static inline bool keyboard_buffer_empty(void)
+{
+	return keyboard_buffer_count == 0;
+}
+
+static inline int keyboard_buffer_remove(void)
+{
+	if(keyboard_buffer_empty())
+	{
+		return -1;
+	}
+	else
+	{
+		int c = keyboard_buffer[keyboard_buffer_pointer];
+		keyboard_buffer_pointer = (keyboard_buffer_pointer + 1) % KEYBOARD_BUFFER_SIZE;
+		keyboard_buffer_count --;
+		return c;
+	}
 }
 
 static inline void keyboard_interrupt_handler(registers_t * registers)
@@ -982,10 +1080,34 @@ static inline void keyboard_interrupt_handler(registers_t * registers)
 
 	uint8_t scancode = inp(PORT_PS2_DATA);
 
-	screen_x = 78;
+	screen_x = SCREEN_WIDTH - 2;
 	screen_y = 1;
 	screen_attribute = 0x2F;
 	screen_puthex(scancode);
+
+	if((scancode & 0x80) == 0)
+	{
+		// key pressed
+		if(scancode == 0x2A || scancode == 0x36)
+		{
+			// shift
+			keyboard_shift = true;
+		}
+		else
+		{
+			int c = keyboard_shift ? keyboard_scancode_table[scancode].shifted : keyboard_scancode_table[scancode].normal;
+			keyboard_buffer_push(c);
+		}
+	}
+	else
+	{
+		// key released
+		if(scancode == (0x80|0x2A) || scancode == (0x80|0x36))
+		{
+			// shift
+			keyboard_shift = false;
+		}
+	}
 }
 
 void interrupt_handler(registers_t * registers)
@@ -1005,7 +1127,7 @@ void interrupt_handler(registers_t * registers)
 	uint8_t old_screen_attribute = screen_attribute;
 
 	screen_x = 0;
-	screen_y = 24;
+	screen_y = SCREEN_HEIGHT - 1;
 	screen_attribute = 0x4E;
 
 	screen_putstr("Interrupt 0x");
@@ -1025,6 +1147,8 @@ void interrupt_handler(registers_t * registers)
 	screen_x = old_screen_x;
 	screen_y = old_screen_y;
 	screen_attribute = old_screen_attribute;
+
+	screen_move_cursor();
 }
 
 #if OS86
@@ -1038,6 +1162,18 @@ const char greeting[] = "Greetings! OS/64 running in 64-bit long mode";
 #else
 # error Unknown target
 #endif
+
+static inline bool keyboard_kbhit(void)
+{
+	return !keyboard_buffer_empty();
+}
+
+static inline int keyboard_getch(void)
+{
+	while(keyboard_buffer_empty())
+		;
+	return keyboard_buffer_remove();
+}
 
 static inline void test_scrolling(void)
 {
@@ -1394,9 +1530,16 @@ noreturn void kmain(void)
 	screen_putchar('\n');
 
 	test_interrupts();
-	test_scrolling();
+//	test_scrolling();
 
 	for(;;)
-		;
+	{
+		screen_putchar(keyboard_getch());
+		if(screen_y == SCREEN_HEIGHT - 1)
+		{
+			screen_scroll_lines(1);
+			screen_y --;
+		}
+	}
 }
 
