@@ -810,10 +810,12 @@ static inline void set_interrupt(uint8_t interrupt_number, uint16_t selector, vo
 #define PORT_PIC2_COMMAND 0xA0
 #define PORT_PIC2_DATA    (PORT_PIC2_COMMAND + 1)
 
-#define PORT_PIT_DATA0   0x40
-#define PORT_PIT_DATA1   (PORT_PIT_DATA0 + 1)
-#define PORT_PIT_DATA2   (PORT_PIT_DATA0 + 2)
-#define PORT_PIT_COMMAND (PORT_PIT_DATA0 + 3)
+#define PORT_PIT_DATA0    0x40
+#define PORT_PIT_DATA1    (PORT_PIT_DATA0 + 1)
+#define PORT_PIT_DATA2    (PORT_PIT_DATA0 + 2)
+#define PORT_PIT_COMMAND  (PORT_PIT_DATA0 + 3)
+
+#define PORT_PS2_DATA     0x60
 
 #define PIC_ICW1_ICW4 0x01
 #define PIC_ICW1_INIT 0x10
@@ -962,6 +964,30 @@ static inline void screen_putdec(ssize_t value)
 
 static uint32_t timer_tick;
 
+static inline void timer_interrupt_handler(registers_t * registers)
+{
+	(void) registers;
+
+	timer_tick ++;
+
+	screen_x = 79;
+	screen_y = 0;
+	screen_attribute = 0x0F;
+	screen_putchar("/-\\|"[timer_tick & 3]);
+}
+
+static inline void keyboard_interrupt_handler(registers_t * registers)
+{
+	(void) registers;
+
+	uint8_t scancode = inp(PORT_PS2_DATA);
+
+	screen_x = 78;
+	screen_y = 1;
+	screen_attribute = 0x2F;
+	screen_puthex(scancode);
+}
+
 void interrupt_handler(registers_t * registers)
 {
 	if(IRQ8 <= registers->interrupt_number && registers->interrupt_number < IRQ8 + 8)
@@ -989,14 +1015,10 @@ void interrupt_handler(registers_t * registers)
 	switch(registers->interrupt_number)
 	{
 	case IRQ0 + 0: // timer interrupt
-		timer_tick ++;
-
-		screen_x = 79;
-		screen_y = 0;
-		screen_attribute = 0x0F;
-		screen_putchar("/-\\|"[timer_tick & 3]);
+		timer_interrupt_handler(registers);
 		break;
 	case IRQ0 + 1: // keyboard interrupt
+		keyboard_interrupt_handler(registers);
 		break;
 	}
 
