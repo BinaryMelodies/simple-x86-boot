@@ -17,6 +17,11 @@ static inline void disable_interrupts(void)
 	asm volatile("cli");
 }
 
+static inline void io_wait(void)
+{
+	outp(0x80, 0); // unused port
+}
+
 #if !OS86
 typedef struct segment_descriptor_t
 {
@@ -670,6 +675,8 @@ asm(
 	"pushw\t%di\n\t"
 	"pushw\t%es\n\t"
 	"pushw\t%ds\n\t"
+	"xorw\t%ax, %ax\n\t"
+	"movw\t%ax, %ds\n\t"
 	"movw\t%sp, %ax\n\t"
 	"pushw\t%ax\n\t"
 	"call\tinterrupt_handler\n\t"
@@ -693,6 +700,8 @@ asm(
 	"pushaw\n\t"
 	"pushw\t%es\n\t"
 	"pushw\t%ds\n\t"
+	"movw\t$0x10, %ax\n\t"
+	"movw\t%ax, %ds\n\t"
 	"movw\t%sp, %ax\n\t"
 	"pushw\t%ax\n\t"
 	"call\tinterrupt_handler\n\t"
@@ -712,6 +721,8 @@ asm(
 	"pushl\t%ds\n\t"
 	"pushl\t%fs\n\t"
 	"pushl\t%gs\n\t"
+	"movw\t$0x10, %ax\n\t"
+	"movw\t%ax, %ds\n\t"
 	"movl\t%esp, %eax\n\t"
 	"pushl\t%eax\n\t"
 	"call\tinterrupt_handler\n\t"
@@ -749,6 +760,8 @@ asm(
 	"pushq\t%rax\n\t"
 	"pushq\t%fs\n\t"
 	"pushq\t%gs\n\t"
+	"movw\t$0x10, %ax\n\t"
+	"movw\t%ax, %ds\n\t"
 	"movq\t%rsp, %rdi\n\t"
 	"call\tinterrupt_handler\n\t"
 	"popq\t%gs\n\t"
@@ -791,6 +804,31 @@ static inline void set_interrupt(uint8_t interrupt_number, uint16_t selector, vo
 	descriptor_set_gate(&idt[interrupt_number], selector, (size_t)offset, access);
 #endif
 }
+
+#define PORT_PIC1_COMMAND 0x20
+#define PORT_PIC1_DATA    (PORT_PIC1_COMMAND + 1)
+#define PORT_PIC2_COMMAND 0xA0
+#define PORT_PIC2_DATA    (PORT_PIC2_COMMAND + 1)
+
+#define PORT_PIT_DATA0   0x40
+#define PORT_PIT_DATA1   (PORT_PIT_DATA0 + 1)
+#define PORT_PIT_DATA2   (PORT_PIT_DATA0 + 2)
+#define PORT_PIT_COMMAND (PORT_PIT_DATA0 + 3)
+
+#define PIC_ICW1_ICW4 0x01
+#define PIC_ICW1_INIT 0x10
+#define PIC_ICW4_8086 0x01
+#define PIC_EOI       0x20
+
+#define PIT_CHANNEL0 0x00
+#define PIT_ACCESS_WORD 0x30
+#define PIT_SQUARE_WAVE 0x06
+
+enum
+{
+	IRQ0 = 32,
+	IRQ8 = IRQ0 + 8,
+};
 
 enum
 {
@@ -922,11 +960,49 @@ static inline void screen_putdec(ssize_t value)
 	screen_putstr(&buffer[ptr]);
 }
 
+static uint32_t timer_tick;
+
 void interrupt_handler(registers_t * registers)
 {
+	if(IRQ8 <= registers->interrupt_number && registers->interrupt_number < IRQ8 + 8)
+	{
+		outp(PORT_PIC2_COMMAND, PIC_EOI);
+		outp(PORT_PIC1_COMMAND, PIC_EOI);
+	}
+	else if(IRQ0 <= registers->interrupt_number && registers->interrupt_number < IRQ0 + 8)
+	{
+		outp(PORT_PIC1_COMMAND, PIC_EOI);
+	}
+
+	uint8_t old_screen_x = screen_x;
+	uint8_t old_screen_y = screen_y;
+	uint8_t old_screen_attribute = screen_attribute;
+
+	screen_x = 0;
+	screen_y = 24;
+	screen_attribute = 0x4E;
+
 	screen_putstr("Interrupt 0x");
 	screen_puthex(registers->interrupt_number);
-	screen_putstr(" called\n");
+	screen_putstr(" called");
+
+	switch(registers->interrupt_number)
+	{
+	case IRQ0 + 0: // timer interrupt
+		timer_tick ++;
+
+		screen_x = 79;
+		screen_y = 0;
+		screen_attribute = 0x0F;
+		screen_putchar("/-\\|"[timer_tick & 3]);
+		break;
+	case IRQ0 + 1: // keyboard interrupt
+		break;
+	}
+
+	screen_x = old_screen_x;
+	screen_y = old_screen_y;
+	screen_attribute = old_screen_attribute;
 }
 
 #if OS86
@@ -1264,6 +1340,32 @@ noreturn void kmain(void)
 #if !OS86
 	load_idt(idt, sizeof idt);
 #endif
+
+	outp(PORT_PIC1_COMMAND, PIC_ICW1_INIT | PIC_ICW1_ICW4);
+	io_wait();
+	outp(PORT_PIC2_COMMAND, PIC_ICW1_INIT | PIC_ICW1_ICW4);
+	io_wait();
+	outp(PORT_PIC1_DATA,    IRQ0);
+	io_wait();
+	outp(PORT_PIC2_DATA,    IRQ8);
+	io_wait();
+	outp(PORT_PIC1_DATA,    4);
+	io_wait();
+	outp(PORT_PIC2_DATA,    2);
+	io_wait();
+	outp(PORT_PIC1_DATA,    PIC_ICW4_8086);
+	io_wait();
+	outp(PORT_PIC2_DATA,    PIC_ICW4_8086);
+	io_wait();
+	outp(PORT_PIC1_DATA,    0);
+	outp(PORT_PIC2_DATA,    0);
+
+	uint16_t tick_interval = 1193180 / 20;
+	outp(PORT_PIT_COMMAND, PIT_CHANNEL0 | PIT_ACCESS_WORD | PIT_SQUARE_WAVE);
+	outp(PORT_PIT_DATA0,   tick_interval & 0xFF);
+	outp(PORT_PIT_DATA0,   tick_interval >> 8);
+
+	enable_interrupts();
 
 	screen_attribute = 0x1E;
 	screen_putstr(greeting);
