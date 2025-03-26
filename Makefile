@@ -31,7 +31,7 @@ obj/386/boot.o: src/boot.asm
 
 obj/386/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
-	i686-elf-gcc -c $< -o $@ -DOS386=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+	i686-elf-gcc -c $< -o $@ -DOS386=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -march=i386
 
 obj/x86-64/boot.o: src/boot.asm
 	mkdir -p `dirname $@`
@@ -39,7 +39,7 @@ obj/x86-64/boot.o: src/boot.asm
 
 obj/x86-64/kernel.o: src/kernel.c
 	mkdir -p `dirname $@`
-	x86_64-elf-gcc -c $< -o $@ -DOS64=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2
+	x86_64-elf-gcc -c $< -o $@ -DOS64=1 -std=gnu99 -ffreestanding -O2 -Wall -Wextra -march=x86-64 -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2
 
 obj/8086/image.bin: obj/8086/boot.o obj/8086/kernel.o
 	ia16-elf-gcc -T src/linker.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
