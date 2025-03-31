@@ -579,13 +579,13 @@ typedef struct registers_t
 	uint16_t bx;
 	uint16_t dx;
 	uint16_t cx;
-//	uint16_t ss;
-//	uint16_t sp;
 	uint16_t interrupt_number;
 	uint16_t ax;
-	uint16_t flags;
-	uint16_t cs;
 	uint16_t ip;
+	uint16_t cs;
+	uint16_t flags;
+//	uint16_t sp;
+//	uint16_t ss;
 } registers_t;
 #elif OS286
 typedef struct registers_t
@@ -605,8 +605,8 @@ typedef struct registers_t
 	uint16_t ss;
 	uint16_t sp;
 	uint16_t flags;
-	uint16_t cs;
 	uint16_t ip;
+	uint16_t cs;
 } registers_t;
 #elif OS386
 typedef struct registers_t
@@ -625,11 +625,11 @@ typedef struct registers_t
 	uint32_t eax;
 	uint32_t interrupt_number;
 	uint32_t error_code;
-	uint32_t ss;
-	uint32_t esp;
-	uint32_t eflags;
-	uint32_t cs;
 	uint32_t eip;
+	uint32_t cs;
+	uint32_t eflags;
+	uint32_t esp;
+	uint32_t ss;
 } registers_t;
 #elif OS64
 typedef struct registers_t
@@ -655,11 +655,11 @@ typedef struct registers_t
 	uint64_t rax;
 	uint64_t interrupt_number;
 	uint64_t error_code;
-	uint64_t ss;
-	uint64_t rsp;
-	uint64_t rflags;
-	uint64_t cs;
 	uint64_t rip;
+	uint64_t cs;
+	uint64_t rflags;
+	uint64_t rsp;
+	uint64_t ss;
 } registers_t;
 #endif
 
@@ -1132,7 +1132,18 @@ void interrupt_handler(registers_t * registers)
 
 	screen_putstr("Interrupt 0x");
 	screen_puthex(registers->interrupt_number);
-	screen_putstr(" called");
+#if !OS86
+	screen_putstr(" with error code ");
+	screen_puthex(registers->error_code);
+#endif
+	screen_putstr(" called from 0x");
+#if OS64
+	screen_puthex(registers->rip);
+#elif OS386
+	screen_puthex(registers->eip);
+#else
+	screen_puthex(registers->ip);
+#endif
 
 	switch(registers->interrupt_number)
 	{
